@@ -4,6 +4,9 @@ from docx import Document
 from docx.shared import Pt
 from io import BytesIO
 import re
+import os
+os.environ["STREAMLIT_WATCHER_TYPE"] = "none"
+
 
 # --- CONTACT INFO EXTRACTION (Regex + Heuristics) ---
 
