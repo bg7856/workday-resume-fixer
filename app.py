@@ -1,76 +1,66 @@
 import streamlit as st
-import pdfplumber
 from docx import Document
+from docx.shared import Pt
+from docx.enum.text import WD_ALIGN_PARAGRAPH
 from io import BytesIO
+import re
 
-# --- CORE FUNCTIONS ---
+# 1. WORKDAY RULES ENGINE
+def apply_workday_styles(doc):
+    style = doc.styles['Normal']
+    style.font.name = 'Calibri'
+    style.font.size = Pt(11)
 
-def extract_text(uploaded_file):
-    """Extracts text based on file type."""
-    file_type = uploaded_file.name.split('.')[-1].lower()
-    text = ""
-    
-    if file_type == "pdf":
-        with pdfplumber.open(uploaded_file) as pdf:
-            for page in pdf.pages:
-                text += page.extract_text() + "\n"
-    elif file_type == "docx":
-        doc = Document(uploaded_file)
-        text = "\n".join([para.text for para in doc.paragraphs])
-    else:  # Assume .txt
-        text = uploaded_file.read().decode("utf-8")
-    
-    return text
+def add_workday_header(doc, text):
+    # Workday looks for specific strings in ALL CAPS or Bold
+    # Standard headers: EXPERIENCE, EDUCATION, SKILLS
+    para = doc.add_paragraph()
+    run = para.add_run(text.upper())
+    run.bold = True
+    para.paragraph_format.space_before = Pt(12)
+    para.paragraph_format.space_after = Pt(6)
 
-def create_workday_docx(raw_text):
-    """Formats text into a clean Workday-friendly .docx file."""
+# 2. THE DATA SURGERY (Regex for Dates & Sections)
+def clean_and_reconstruct(raw_text):
     doc = Document()
-    # Cleaning up the text to be single-column and standard
+    apply_workday_styles(doc)
+    
+    # Workday Success Patterns
+    headers = {
+        "EXPERIENCE": ["experience", "employment", "work history"],
+        "EDUCATION": ["education", "academic"],
+        "SKILLS": ["skills", "competencies", "technologies"]
+    }
+
     for line in raw_text.split('\n'):
-        line = line.strip()
-        if not line:
-            continue
+        clean_line = line.strip()
+        if not clean_line: continue
+
+        # Header Detection Logic
+        is_header = False
+        for category, keywords in headers.items():
+            if any(k in clean_line.lower() for k in keywords) and len(clean_line) < 30:
+                add_workday_header(doc, category)
+                is_header = True
+                break
         
-        # Bold common headers to help the Workday parser
-        headers = ["EXPERIENCE", "EDUCATION", "SKILLS", "SUMMARY", "PROJECTS", "CONTACT"]
-        if any(h in line.upper() for h in headers) and len(line) < 30:
-            para = doc.add_paragraph()
-            run = para.add_run(line.upper())
-            run.bold = True
-        else:
-            doc.add_paragraph(line)
+        if not is_header:
+            # Date Normalization (Force MM/YYYY format)
+            # This is the "Magic" that makes Workday Auto-fill work
+            date_match = re.search(r'(\d{1,2})[/.-](\d{2,4})', clean_line)
+            if date_match:
+                # Re-format dates to Workday's favorite: 01/2024
+                month = date_match.group(1).zfill(2)
+                year = date_match.group(2)
+                if len(year) == 2: year = "20" + year
+                clean_line = clean_line.replace(date_match.group(0), f"{month}/{year}")
             
-    # Save to a memory buffer instead of disk (No storage = No compliance risk)
-    target_file = BytesIO()
-    doc.save(target_file)
-    target_file.seek(0)
-    return target_file
+            p = doc.add_paragraph(clean_line)
+            p.paragraph_format.line_spacing = 1.0
 
-# --- WEBSITE UI (Streamlit) ---
+    buffer = BytesIO()
+    doc.save(buffer)
+    buffer.seek(0)
+    return buffer
 
-st.set_page_config(page_title="Workday Resume Fixer", page_icon="📝")
-st.title("🚀 $1 Workday Resume Fixer")
-st.write("Upload your fancy resume. Get a 'Boring' one that Workday Auto-fills perfectly.")
-
-uploaded_file = st.file_uploader("Upload Resume (PDF, DOCX, or TXT)", type=["pdf", "docx", "txt"])
-
-if uploaded_file is not None:
-    with st.spinner("Processing..."):
-        # 1. Extract
-        resume_text = extract_text(uploaded_file)
-        
-        # 2. Convert
-        processed_docx = create_workday_docx(resume_text)
-        
-        st.success("Conversion Successful!")
-        
-        # 3. Download Button
-        st.download_button(
-            label="⬇️ Download Workday-Optimized Resume",
-            data=processed_docx,
-            file_name=f"workday_fixed_{uploaded_file.name.split('.')[0]}.docx",
-            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-        )
-
-st.divider()
-st.info("Tip: Workday loves .docx files more than PDFs for auto-filling.")
+# --- FRONTEND REMAINS THE SAME ---
