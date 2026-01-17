@@ -106,8 +106,8 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.markdown("#### UPI (India)")
-st.image("upi_qr.png", caption="Scan to Pay via UPI")  # Add your QR image in repo
-st.markdown("<p style='text-align:center;'>UPI ID: yourname@upi</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align:center;font-size:18px;font-weight:bold;'>UPI ID: pramod@icicicicic</p>", unsafe_allow_html=True)
+
 
 # Resume Upload
 uploaded_file = st.file_uploader("📂 Upload Resume (PDF, DOCX, TXT)", type=["pdf", "docx", "txt"])
